@@ -1,178 +1,394 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Photo with GPS + Time Watermark</title>
-<style>
-  body{
-    font-family:system-ui,Segoe UI,Roboto,Arial;
-    margin:16px;
-    display:flex;
-    flex-direction:column;
-    gap:16px;
-    align-items:center;
-    background:#f4f6f8;
-    color:#333;
-  }
-  h1{font-size:1.3rem;margin:0;}
-  video,canvas{max-width:100%;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.2);background:#000}
-  .controls,.editor{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-  button,select,input[type=range]{
-    padding:6px 10px;border-radius:6px;border:1px solid #ccc;font-size:0.9rem;
-  }
-  button{background:#fff;cursor:pointer;transition:all 0.2s}
-  button:hover{background:#007bff;color:#fff;border-color:#007bff}
-  #msg{color:#555;font-size:0.95rem;text-align:center}
-  .editor{flex-direction:column;align-items:stretch;background:#fff;
-          padding:12px 16px;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,0.1);width:100%;max-width:360px}
-  .editor label{display:flex;gap:6px;align-items:center;justify-content:space-between;margin:4px 0}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>SnapMap — Photo + GPS (Android-style UI)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Icons" rel="stylesheet">
+  <style>
+    /* Basic Android-like material styles */
+    :root{
+      --bg:#f6f7fb;
+      --surface:#ffffff;
+      --primary:#1e88e5; /* blue */
+      --on-primary:#ffffff;
+      --text:#1f2933;
+      --muted:#6b7280;
+      --card-shadow: 0 6px 18px rgba(31,41,51,0.12);
+      --radius:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Roboto,system-ui,-apple-system,'Segoe UI',Arial;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+    .app{max-width:420px;margin:18px auto;padding:12px;}
+    header.appbar{display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:linear-gradient(90deg,var(--surface),#fbfdff);box-shadow:var(--card-shadow)}
+    .appbar .menu{width:44px;height:44px;border-radius:10px;display:grid;place-items:center;background:transparent;color:var(--primary);cursor:pointer}
+    .title{font-weight:500;font-size:1.05rem}
+    .subtitle{font-size:0.82rem;color:var(--muted)}
+
+    /* Main card: camera preview */
+    .card{margin-top:12px;background:var(--surface);border-radius:var(--radius);overflow:hidden;box-shadow:var(--card-shadow);}
+    .preview{position:relative;background:#000;display:flex;align-items:center;justify-content:center;height:64vw;max-height:720px}
+    video{width:100%;height:100%;object-fit:cover}
+    canvas{display:none}
+
+    /* floating camera controls */
+    .fab-row{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:10px}
+    .fab{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;background:var(--surface);box-shadow:0 6px 14px rgba(0,0,0,0.18);cursor:pointer}
+    .fab.primary{background:var(--primary);color:var(--on-primary)}
+    .mini{width:44px;height:44px;border-radius:12px}
+
+    /* camera controls bar */
+    .controls{display:flex;gap:8px;padding:12px;align-items:center}
+    .select, .btn{flex:1}
+    select{width:100%;padding:10px;border-radius:10px;border:1px solid #e6edf7;background:#fbfdff}
+    .btn{padding:10px;border-radius:10px;background:var(--primary);color:var(--on-primary);text-align:center;cursor:pointer}
+
+    /* settings panel */
+    .settings{display:flex;flex-direction:column;gap:8px;padding:12px;margin-top:12px;background:var(--surface);border-radius:12px;box-shadow:var(--card-shadow)}
+    .row{display:flex;gap:8px;align-items:center}
+    label{font-size:0.85rem;color:var(--muted)}
+    input[type=range]{width:100%}
+
+    /* GPS overlay look */
+    .gps-panel{position:absolute;left:14px;top:14px;background:rgba(255,255,255,0.06);backdrop-filter:blur(6px);padding:10px;border-radius:10px;color:#fff;min-width:160px}
+    .gps-time{font-weight:600;font-size:0.92rem}
+    .gps-coords{font-size:0.8rem;opacity:0.95}
+
+    /* watermark positions helpers */
+    .pos-top-left{left:14px;top:14px}
+    .pos-top-right{right:14px;top:14px}
+    .pos-bottom-left{left:14px;bottom:14px}
+    .pos-bottom-right{right:14px;bottom:14px}
+    .pos-center{left:50%;top:50%;transform:translate(-50%,-50%)}
+
+    /* bottom app bar */
+    footer.appbar-bottom{display:flex;gap:12px;align-items:center;padding:12px;margin-top:12px;background:var(--surface);border-radius:12px;box-shadow:var(--card-shadow);justify-content:space-between}
+    .chip{display:inline-flex;gap:8px;align-items:center;padding:8px 10px;border-radius:999px;background:#f2f6ff;color:var(--primary);font-weight:500}
+
+    /* small icons */
+    .material-icons{font-family:'Material Icons';font-weight:normal;font-style:normal;font-size:20px;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;word-wrap:normal;direction:ltr}
+
+    /* responsive tweaks */
+    @media (max-width:420px){.app{margin:8px}}
+  </style>
 </head>
 <body>
-  <h1>Camera Capture with GPS Watermark</h1>
-  <div id="msg">Start camera and allow location.</div>
+  <div class="app" role="application">
+    <header class="appbar">
+      <div class="menu" id="openSettings" title="Settings"><span class="material-icons">menu</span></div>
+      <div>
+        <div class="title">SnapMap</div>
+        <div class="subtitle">Photo with embedded visual GPS • Android-style UI</div>
+      </div>
+    </header>
 
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas" style="display:none"></canvas>
+    <div class="card">
+      <div class="preview" id="previewWrap">
+        <div class="gps-panel pos-top-left" id="gpsPanel" style="display:none">
+          <div class="gps-time" id="gpsTime">--</div>
+          <div class="gps-coords" id="gpsCoords">Lat: -- Lon: --</div>
+        </div>
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
 
-  <div class="controls">
-    <select id="cameraSelect"></select>
-    <button id="startBtn">Start</button>
-    <button id="captureBtn">Capture</button>
-    <a id="downloadBtn"><button disabled>Download</button></a>
+        <div class="fab-row" aria-hidden>
+          <div class="fab mini" id="switchCam" title="Switch camera"><span class="material-icons">flip_camera_android</span></div>
+          <div class="fab primary" id="shutter" title="Capture"><span class="material-icons">camera_alt</span></div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <select id="cameraSelect" class="select" aria-label="Choose camera"></select>
+        <div class="btn" id="startBtn">Start</div>
+      </div>
+    </div>
+
+    <div class="settings" id="settingsPanel">
+      <div class="row"><label>Watermark font</label>
+        <select id="wmFont">
+          <option value="Roboto, sans-serif">Roboto (default)</option>
+          <option value="serif">Serif</option>
+          <option value="monospace">Monospace</option>
+          <option value="cursive">Cursive</option>
+        </select>
+      </div>
+
+      <div class="row"><label>Size</label><input id="wmSize" type="range" min="12" max="48" value="18"></div>
+      <div class="row"><label>Opacity</label><input id="wmOpacity" type="range" min="0" max="1" step="0.05" value="0.9"></div>
+      <div class="row"><label>Position</label>
+        <select id="wmPosition">
+          <option value="bottom-left">Bottom Left</option>
+          <option value="bottom-right">Bottom Right</option>
+          <option value="top-left">Top Left</option>
+          <option value="top-right">Top Right</option>
+          <option value="center">Center</option>
+        </select>
+      </div>
+
+      <div class="row"><label>Embed EXIF (GPS)</label>
+        <select id="embedExif"><option value="no">No</option><option value="yes">Yes</option></select>
+      </div>
+
+      <div class="row" style="justify-content:space-between;margin-top:6px">
+        <div class="chip" id="statusChip"><span class="material-icons">gps_fixed</span><span id="gpsStatus">GPS: unknown</span></div>
+        <div style="display:flex;gap:8px">
+          <div class="btn" id="downloadBtn" style="background:#fff;color:var(--primary);border:1px solid #e0eefb">Download</div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="appbar-bottom">
+      <div style="display:flex;flex-direction:column">
+        <small style="color:var(--muted)">Tip</small>
+        <strong>Allow camera & location permissions</strong>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:0.9rem;color:var(--muted)">Ready</div>
+      </div>
+    </footer>
   </div>
 
-  <div class="editor">
-    <strong>Watermark Settings</strong>
-    <label>Font
-      <select id="wmFont">
-        <option value="sans-serif">Sans-serif</option>
-        <option value="serif">Serif</option>
-        <option value="monospace">Monospace</option>
-        <option value="cursive">Cursive</option>
-      </select>
-    </label>
-    <label>Font size <input type="range" id="wmSize" min="14" max="48" value="20"></label>
-    <label>Opacity <input type="range" id="wmOpacity" min="0" max="1" step="0.05" value="0.85"></label>
-    <label>Position
-      <select id="wmPosition">
-        <option value="bottom-left">Bottom Left</option>
-        <option value="bottom-right">Bottom Right</option>
-        <option value="top-left">Top Left</option>
-        <option value="top-right">Top Right</option>
-        <option value="center">Center</option>
-      </select>
-    </label>
-  </div>
+  <!-- piexif for optional EXIF embed (from CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/piexifjs@1.0.6/piexif.min.js"></script>
 
-<script>
-(async function(){
-  const video=document.getElementById("video");
-  const canvas=document.getElementById("canvas");
-  const ctx=canvas.getContext("2d");
-  const startBtn=document.getElementById("startBtn");
-  const captureBtn=document.getElementById("captureBtn");
-  const downloadBtn=document.getElementById("downloadBtn").firstElementChild;
-  const cameraSelect=document.getElementById("cameraSelect");
-  const msg=document.getElementById("msg");
+  <script>
+    // Android-style single-file app logic
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const cameraSelect = document.getElementById('cameraSelect');
+    const startBtn = document.getElementById('startBtn');
+    const shutter = document.getElementById('shutter');
+    const switchCam = document.getElementById('switchCam');
+    const gpsPanel = document.getElementById('gpsPanel');
+    const gpsTime = document.getElementById('gpsTime');
+    const gpsCoords = document.getElementById('gpsCoords');
+    const gpsStatus = document.getElementById('gpsStatus');
+    const wmFont = document.getElementById('wmFont');
+    const wmSize = document.getElementById('wmSize');
+    const wmOpacity = document.getElementById('wmOpacity');
+    const wmPosition = document.getElementById('wmPosition');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const embedExif = document.getElementById('embedExif');
 
-  const wmFont=document.getElementById("wmFont");
-  const wmSize=document.getElementById("wmSize");
-  const wmOpacity=document.getElementById("wmOpacity");
-  const wmPosition=document.getElementById("wmPosition");
+    let stream = null;
+    let currentDeviceId = null;
+    let latestBlobUrl = null;
+    let lastGeo = null;
 
-  let stream=null;
-  let latestUrl=null;
+    function setGpsStatus(text){gpsStatus.textContent = text}
 
-  // Populate camera list
-  async function listCameras(){
-    const devices=await navigator.mediaDevices.enumerateDevices();
-    cameraSelect.innerHTML="";
-    devices.filter(d=>d.kind==="videoinput").forEach((d,i)=>{
-      const opt=document.createElement("option");
-      opt.value=d.deviceId;
-      opt.text=d.label||`Camera ${i+1}`;
-      cameraSelect.appendChild(opt);
-    });
-  }
+    async function listCameras(){
+      try{
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cams = devices.filter(d=>d.kind==='videoinput');
+        cameraSelect.innerHTML='';
+        cams.forEach((c,i)=>{
+          const opt = document.createElement('option');
+          opt.value = c.deviceId;
+          opt.text = c.label || `Camera ${i+1}`;
+          cameraSelect.appendChild(opt);
+        });
+      }catch(e){console.error(e)}
+    }
 
-  async function startCamera(){
-    if(stream) stream.getTracks().forEach(t=>t.stop());
-    try{
-      stream=await navigator.mediaDevices.getUserMedia({
-        video:{deviceId:cameraSelect.value?{exact:cameraSelect.value}:undefined}
+    async function startCamera(deviceId){
+      if(stream) stream.getTracks().forEach(t=>t.stop());
+      try{
+        const constraints = {video: deviceId?{deviceId:{exact:deviceId}}: {facingMode: 'environment'}, audio:false};
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        const track = stream.getVideoTracks()[0];
+        currentDeviceId = track.getSettings().deviceId || deviceId;
+        setGpsStatus('Camera ON');
+      }catch(e){setGpsStatus('Camera error');console.error(e)}
+    }
+
+    async function switchCamera(){
+      const options = Array.from(cameraSelect.options).map(o=>o.value);
+      if(options.length<=1) return;
+      const idx = options.indexOf(cameraSelect.value);
+      const next = options[(idx+1)%options.length];
+      cameraSelect.value = next;
+      await startCamera(next);
+    }
+
+    function getGeo(){
+      return new Promise((resolve,reject)=>{
+        if(!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+        navigator.geolocation.getCurrentPosition(pos=>{
+          const coords = pos.coords;
+          lastGeo = {lat: coords.latitude, lon: coords.longitude, accuracy: coords.accuracy, altitude: coords.altitude};
+          resolve(lastGeo);
+        }, err => reject(err), {enableHighAccuracy:true,timeout:8000,maximumAge:30000});
       });
-      video.srcObject=stream;
-      msg.textContent="Camera started.";
-    }catch(e){msg.textContent="Camera error: "+e.message;}
-  }
+    }
 
-  async function getGeo(){
-    return new Promise((res,rej)=>{
-      if(!navigator.geolocation) return rej("Geo not supported");
-      navigator.geolocation.getCurrentPosition(p=>{
-        res({lat:p.coords.latitude,lon:p.coords.longitude});
-      },rej,{enableHighAccuracy:true,timeout:8000});
+    // draw rounded rect (helper)
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r){
+      if (w < 2 * r) r = w / 2;
+      if (h < 2 * r) r = h / 2;
+      this.beginPath();
+      this.moveTo(x + r, y);
+      this.arcTo(x + w, y, x + w, y + h, r);
+      this.arcTo(x + w, y + h, x, y + h, r);
+      this.arcTo(x, y + h, x, y, r);
+      this.arcTo(x, y, x + w, y, r);
+      this.closePath();
+      return this;
+    };
+
+    function formatTime(d){
+      return d.toLocaleString();
+    }
+
+    function showGpsOverlay(timeStr, coordsStr, position){
+      gpsTime.textContent = timeStr;
+      gpsCoords.textContent = coordsStr;
+      gpsPanel.style.display = 'block';
+      gpsPanel.className = 'gps-panel ' + positionClass(position);
+    }
+    function hideGpsOverlay(){gpsPanel.style.display='none'}
+    function positionClass(pos){
+      return ({'top-left':'pos-top-left','top-right':'pos-top-right','bottom-left':'pos-bottom-left','bottom-right':'pos-bottom-right','center':'pos-center'}[pos]||'pos-bottom-left')
+    }
+
+    async function capture(){
+      if(!video.videoWidth) return;
+      try{
+        setGpsStatus('Getting location...');
+        let geo = null;
+        try{geo = await getGeo(); setGpsStatus(`GPS OK (${Math.round(geo.accuracy||0)}m)`)}catch(e){console.warn('geo fail',e); setGpsStatus('GPS unavailable');}
+        const vw = video.videoWidth, vh = video.videoHeight;
+        canvas.width = vw; canvas.height = vh;
+        const cx = canvas.getContext('2d');
+        cx.drawImage(video,0,0,vw,vh);
+
+        const timeStr = formatTime(new Date());
+        const coordsStr = geo?`Lat: ${geo.lat.toFixed(5)}  Lon: ${geo.lon.toFixed(5)}`:'Location unavailable';
+
+        // design watermark box
+        cx.font = `${wmSize.value}px ${wmFont.value}`;
+        cx.textBaseline = 'top';
+        const lines = [timeStr, coordsStr];
+        const lh = parseInt(wmSize.value)*1.3;
+        const padding = Math.max(12, Math.round(vw * 0.02));
+        const measured = lines.map(l=>cx.measureText(l).width);
+        const boxW = Math.max(...measured) + padding*2;
+        const boxH = lines.length*lh + padding*1.2;
+
+        let x = padding, y = padding;
+        const pos = wmPosition.value;
+        if(pos.includes('bottom')) y = vh - boxH - padding;
+        if(pos.includes('right')) x = vw - boxW - padding;
+        if(pos === 'center'){ x = (vw-boxW)/2; y = (vh-boxH)/2 }
+
+        // background with opacity
+        cx.globalAlpha = parseFloat(wmOpacity.value);
+        cx.fillStyle = '#000';
+        cx.roundRect(x,y,boxW,boxH,12).fill();
+        cx.globalAlpha = 1;
+
+        // text white
+        cx.fillStyle = '#fff';
+        cx.shadowColor = 'rgba(0,0,0,0.6)'; cx.shadowBlur=6; cx.shadowOffsetX=1; cx.shadowOffsetY=1;
+        lines.forEach((l,i)=>{
+          cx.fillText(l, x+padding, y+padding + i*lh);
+        });
+
+        // optional small badge for app name bottom-left
+        const badgeText = 'SnapMap';
+        cx.font = '14px Roboto';
+        const badgeW = cx.measureText(badgeText).width + 12;
+        cx.globalAlpha = 0.8; cx.fillStyle = '#111';
+        cx.roundRect(12, vh - 34, badgeW, 26, 8).fill();
+        cx.globalAlpha = 1;
+        cx.fillStyle = '#fff'; cx.fillText(badgeText, 18, vh - 30);
+
+        // update preview overlay
+        showGpsOverlay(timeStr, coordsStr, wmPosition.value);
+
+        canvas.toBlob(async function(blob){
+          if(latestBlobUrl) URL.revokeObjectURL(latestBlobUrl);
+          latestBlobUrl = URL.createObjectURL(blob);
+          downloadBtn.textContent = 'Download image';
+          downloadBtn.disabled = false;
+          downloadBtn.dataset.blob = latestBlobUrl;
+
+          // optionally embed EXIF
+          if(embedExif.value === 'yes' && typeof piexif !== 'undefined' && geo){
+            try{
+              const reader = new FileReader();
+              reader.onload = function(){
+                const dataUrl = reader.result;
+                const exifObj = {"0th":{},"Exif":{},"GPS":{}};
+                function dmsRational(dec){
+                  dec = Math.abs(dec);
+                  const deg = Math.floor(dec);
+                  const minFloat = (dec - deg) * 60;
+                  const min = Math.floor(minFloat);
+                  const sec = Math.round((minFloat - min) * 60 * 100);
+                  return [[deg,1],[min,1],[sec,100]];
+                }
+                exifObj.GPS[piexif.GPSIFD.GPSLatitudeRef] = geo.lat >= 0 ? 'N' : 'S';
+                exifObj.GPS[piexif.GPSIFD.GPSLatitude] = dmsRational(geo.lat);
+                exifObj.GPS[piexif.GPSIFD.GPSLongitudeRef] = geo.lon >= 0 ? 'E' : 'W';
+                exifObj.GPS[piexif.GPSIFD.GPSLongitude] = dmsRational(geo.lon);
+                const dt = new Date();
+                const dtStr = `${dt.getFullYear()}:${String(dt.getMonth()+1).padStart(2,'0')}:${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}:${String(dt.getSeconds()).padStart(2,'0')}`;
+                exifObj.Exif[piexif.ExifIFD.DateTimeOriginal] = dtStr;
+                const exifBytes = piexif.dump(exifObj);
+                const newDataUrl = piexif.insert(exifBytes, dataUrl);
+                fetch(newDataUrl).then(r=>r.blob()).then(b2=>{
+                  if(latestBlobUrl) URL.revokeObjectURL(latestBlobUrl);
+                  latestBlobUrl = URL.createObjectURL(b2);
+                  downloadBtn.dataset.blob = latestBlobUrl;
+                  setGpsStatus('Captured + EXIF embedded');
+                }).catch(e=>console.warn('EXIF write failed',e));
+              };
+              reader.readAsDataURL(blob);
+            }catch(e){console.warn('EXIF error',e)}
+          }
+
+        }, 'image/jpeg', 0.92);
+
+      }catch(err){console.error(err); setGpsStatus('Capture failed')}
+    }
+
+    // download handler
+    downloadBtn.addEventListener('click', ()=>{
+      const blobUrl = downloadBtn.dataset.blob;
+      if(!blobUrl) return;
+      const a = document.createElement('a');
+      a.href = blobUrl; a.download = `snapmap_${Date.now()}.jpg`; document.body.appendChild(a); a.click(); a.remove();
     });
-  }
 
-  captureBtn.onclick=async()=>{
-    if(!video.videoWidth){msg.textContent="Start camera first.";return;}
-    let geo=null;
-    try{geo=await getGeo();}catch(e){msg.textContent="Geo unavailable."; }
-    const vw=video.videoWidth,vh=video.videoHeight;
-    canvas.width=vw;canvas.height=vh;
-    ctx.drawImage(video,0,0,vw,vh);
+    // UI wiring
+    document.getElementById('openSettings').addEventListener('click', ()=>{
+      settingsPanel.scrollIntoView({behavior:'smooth',block:'center'});
+    });
+    startBtn.addEventListener('click', async ()=>{
+      await startCamera(cameraSelect.value||null);
+    });
+    switchCam.addEventListener('click', switchCamera);
+    shutter.addEventListener('click', capture);
 
-    const time=new Date().toLocaleString();
-    const gps=geo?`Lat: ${geo.lat.toFixed(5)}  Lon: ${geo.lon.toFixed(5)}`:"Location unavailable";
+    // initial setup
+    (async function init(){
+      await listCameras();
+      try{ await startCamera(); }catch(e){}
+      // warm GPS attempt
+      try{ const g = await getGeo(); setGpsStatus(`GPS ready (${Math.round(g.accuracy||0)}m)`); }catch(e){ setGpsStatus('GPS not ready') }
+    })();
 
-    const lines=[time,gps];
-
-    // style
-    ctx.font=`${wmSize.value}px ${wmFont.value}`;
-    ctx.textAlign="left";ctx.textBaseline="top";
-    const lineHeight=parseInt(wmSize.value)*1.4;
-    const padding=12;
-    const boxWidth=Math.max(...lines.map(l=>ctx.measureText(l).width))+padding*2;
-    const boxHeight=lines.length*lineHeight+padding*1.5;
-
-    let x=padding,y=padding;
-    ctx.textAlign="left";
-    if(wmPosition.value.includes("bottom")) y=vh-boxHeight-padding;
-    if(wmPosition.value.includes("right")){x=vw-boxWidth-padding;ctx.textAlign="left";}
-    if(wmPosition.value==="center"){x=(vw-boxWidth)/2;y=(vh-boxHeight)/2;}
-
-    // draw rounded rect background
-    ctx.globalAlpha=wmOpacity.value;
-    ctx.fillStyle="#000";
-    ctx.beginPath();
-    const r=12;
-    ctx.roundRect(x,y,boxWidth,boxHeight,r);
-    ctx.fill();
-    ctx.globalAlpha=1;
-
-    // text
-    ctx.fillStyle="#fff";
-    ctx.shadowColor="rgba(0,0,0,0.6)";ctx.shadowBlur=4;
-    lines.forEach((line,i)=>{
-      ctx.fillText(line,x+padding,y+padding+i*lineHeight);
+    // update gps overlay position when changed
+    wmPosition.addEventListener('change', ()=>{
+      if(gpsPanel.style.display!=='none') gpsPanel.className = 'gps-panel ' + positionClass(wmPosition.value);
     });
 
-    canvas.toBlob(b=>{
-      if(latestUrl) URL.revokeObjectURL(latestUrl);
-      latestUrl=URL.createObjectURL(b);
-      downloadBtn.parentElement.href=latestUrl;
-      downloadBtn.parentElement.download=`photo_${Date.now()}.jpg`;
-      downloadBtn.disabled=false;
-      msg.textContent="Photo captured with watermark.";
-    },"image/jpeg",0.9);
-  };
-
-  startBtn.onclick=startCamera;
-  await listCameras();
-})();
-</script>
+  </script>
 </body>
 </html>
